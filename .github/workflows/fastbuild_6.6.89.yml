@@ -32,6 +32,11 @@ on:
         required: true
         type: boolean
         default: 'false'
+      module_overlay_enable:
+        description: '是否启用模块覆盖机制(将qcom-scm模块嵌入内核，防止内核静默熔断)'
+        required: true
+        type: boolean
+        default: 'false'
       lz4_enable:
         description: '是否安装 lz4 1.10.0+zstd 1.5.7 补丁'
         required: true
@@ -311,7 +316,43 @@ jobs:
             cd ./KernelSU
             patch -p1 < 10_enable_susfs_for_ksu.patch || true
           fi
+
+      - name: 应用模块覆盖补丁并嵌入qcom-scm_sm8750模块
+        if: inputs.module_overlay_enable
+        run: |
+          cd kernel_workspace/common
           
+          echo "正在从 WildKernels/kernel_patches 仓库应用模块覆盖补丁..."
+          wget -O 0001-module-Add-module-intercept-and-overlay-mechanism-android15-6.6.patch \
+               https://github.com/WildKernels/kernel_patches/raw/main/oneplus/module_overlay/0001-module-Add-module-intercept-and-overlay-mechanism-android15-6.6.patch
+          
+          if [ ! -f "0001-module-Add-module-intercept-and-overlay-mechanism-android15-6.6.patch" ]; then
+            echo "❌ 错误：补丁文件下载失败！"
+            exit 1
+          fi
+          
+          echo "应用补丁..."
+          patch -p1 -F 3 < 0001-module-Add-module-intercept-and-overlay-mechanism-android15-6.6.patch || true
+          
+          echo "设置convert_overlay.sh执行权限..."
+          chmod +x kernel/module/module_overlay/convert_overlay.sh
+          
+          echo "创建modules目录..."
+          mkdir -p kernel/module/module_overlay/modules
+          
+          echo "从 WildKernels/kernel_patches 仓库嵌入qcom-scm_sm8750模块..."
+          wget -O kernel/module/module_overlay/modules/qcom-scm_sm8750.ko \
+               https://github.com/WildKernels/kernel_patches/raw/main/oneplus/module_overlay/modules/qcom-scm_sm8750_A16_android15-6.6.89.ko
+          
+          if [ -f kernel/module/module_overlay/modules/qcom-scm_sm8750.ko ]; then
+            echo "✅ qcom-scm_sm8750模块已成功嵌入 (大小: $(du -h kernel/module/module_overlay/modules/qcom-scm_sm8750.ko | cut -f1))"
+          else
+            echo "❌ 错误：qcom-scm_sm8750模块文件下载失败！"
+            exit 1
+          fi
+          
+          echo "✅ 模块覆盖补丁应用完成！"
+
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
         if: inputs.lz4_enable
         run: |
@@ -387,6 +428,12 @@ jobs:
           cd common
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/cve-2026-43499-rtmutex-6.6.patch
           patch -p1 -F 3 < cve-2026-43499-rtmutex-6.6.patch
+          cd ..
+          # 模块覆盖支持
+          if [[ "${{ github.event.inputs.module_overlay_enable }}" == "true" ]]; then
+            echo "CONFIG_MODULE_OVERLAY=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "✅ 已启用模块覆盖支持"
+          fi
           
       - name: 启用网络功能增强优化配置
         if: inputs.better_net
@@ -423,6 +470,7 @@ jobs:
           cd common
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/config.patch
           patch -p1 -F 3 < config.patch || true
+          cd ..
 
       - name: 添加 BBR 等一系列拥塞控制算法
         run: |
@@ -715,6 +763,7 @@ jobs:
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
           echo "susfs: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
+          echo "Module Overlay: ${{ github.event.inputs.module_overlay_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
           echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
           echo "IPset: ${{ github.event.inputs.better_net }}" >> ./ak3.log
@@ -798,6 +847,7 @@ jobs:
           - KSU分支：${{ env.KSU_TYPENAME }}
           - susfs支持：${{ github.event.inputs.susfs_enable }}
           - KPM支持 ：${{ github.event.inputs.kpm_enable }}
+          - 模块覆盖：${{ github.event.inputs.module_overlay_enable }}
           - LZ4支持：${{ github.event.inputs.lz4_enable }}
           - LZ4KD支持：${{ github.event.inputs.lz4kd_enable }}
           - 网络功能增强：${{ github.event.inputs.better_net }}
