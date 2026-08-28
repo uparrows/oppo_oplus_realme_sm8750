@@ -342,7 +342,7 @@ jobs:
           
           echo "从 WildKernels/kernel_patches 仓库嵌入qcom-scm模块..."
           wget -O kernel/module/module_overlay/modules/qcom-scm.ko \
-               https://github.com/WildKernels/kernel_patches/raw/main/oneplus/module_overlay/modules/qcom-scm_A16_android15-6.6.89.ko
+               https://github.com/WildKernels/kernel_patches/raw/main/oneplus/module_overlay/modules/qcom-scm_sm8750_A16_android15-6.6.89.ko
           
           if [ -f kernel/module/module_overlay/modules/qcom-scm.ko ]; then
             echo "✅ qcom-scm模块已成功嵌入 (大小: $(du -h kernel/module/module_overlay/modules/qcom-scm.ko | cut -f1))"
